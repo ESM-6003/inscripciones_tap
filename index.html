@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Inscripciones TAP - Web MVP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="bg-shape bg-shape-a"></div>
+  <div class="bg-shape bg-shape-b"></div>
+
+  <main class="app-shell">
+    <header class="app-header">
+      <div>
+        <h1>Sistema de Inscripciones TAP</h1>
+        <p>Escuela Superior de Musica N 6003</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn btn-ghost" href="https://esm-6003.github.io/listados/" target="_blank" rel="noopener noreferrer">Generar Listados</a>
+        <a class="btn btn-ghost" href="https://docs.google.com/spreadsheets/d/1YoyK2aw8x-RJAANB4enPna8HWspLML8aAYr4D_epI2s/edit?usp=sharing" target="_blank" rel="noopener noreferrer">Planilla Drive</a>
+        <a class="btn btn-ghost" href="https://mail.google.com/mail/u/1/#sent" target="_blank" rel="noopener noreferrer">Mail</a>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Secciones principales">
+      <button class="tab is-active" data-tab="formulario" role="tab" aria-selected="true">Formulario</button>
+      <button class="tab" data-tab="historial" role="tab" aria-selected="false">Historial</button>
+      <button class="tab" data-tab="configuracion" role="tab" aria-selected="false">Configuracion</button>
+    </nav>
+
+    <section class="tab-panel is-active" id="formulario" role="tabpanel">
+      <form id="inscripcionForm" class="card form-stack">
+          <h2>Datos del Estudiante</h2>
+          <div class="field-grid">
+            <label>Nombre<input name="nombre" required></label>
+            <label>Apellido<input name="apellido" required></label>
+            <label>DNI<input name="dni" required inputmode="numeric"></label>
+            <label>Legajo<input name="legajo"></label>
+            <label>Genero
+              <select name="genero" required>
+                <option value="">Seleccionar</option>
+                <option>Mujer</option>
+                <option>Varon</option>
+                <option>Otrx</option>
+              </select>
+            </label>
+            <label>Telefono<input name="telefono"></label>
+            <label>Edad<input name="edad" inputmode="numeric"></label>
+            <label>Domicilio<input name="direccion"></label>
+            <label>Email<input name="email" type="email"></label>
+            <label>Fecha nacimiento<input name="fecha_nacimiento" placeholder="DD-MM-YYYY"></label>
+          </div>
+
+          <h3>Datos Responsable o Tutor/a</h3>
+          <div class="field-grid">
+            <label>Nombre Padre<input name="nombre_padre"></label>
+            <label>Nombre Madre<input name="nombre_madre"></label>
+            <label>Contacto Tutor<input name="telefono_emergencia"></label>
+          </div>
+
+          <h3>Datos de Inscripcion</h3>
+          <div class="field-grid">
+            <label>SAETA
+              <select name="saeta"><option>No</option><option>Si</option></select>
+            </label>
+            <label>Obra Social<input name="obra_social"></label>
+            <label>Seguro Escolar
+              <select name="seguro_escolar"><option>No</option><option>Si</option></select>
+            </label>
+            <label>Pago Voluntario
+              <select name="pago_voluntario"><option>No</option><option>Si</option></select>
+            </label>
+            <label>Monto<input name="monto" inputmode="numeric"></label>
+            <label>Permiso
+              <select name="permiso"><option>No</option><option>Si</option></select>
+            </label>
+          </div>
+
+          <div class="materias-header">
+            <h3>Datos Materia</h3>
+          </div>
+
+          <div id="materiasContainer" class="materias-stack">
+            <article class="materia-item" data-materia-item>
+              <div class="materia-item-head">
+                <h4>Materia 1</h4>
+                <button class="btn btn-small btn-danger remove-materia" type="button" hidden>Quitar</button>
+              </div>
+              <div class="field-grid">
+                <label>Año
+                  <select class="materia-anio">
+                    <option value="">Seleccionar</option>
+                    <option>1</option>
+                    <option>2</option>
+                    <option>3</option>
+                    <option>4</option>
+                  </select>
+                </label>
+                <label>Materia
+                  <select class="materia-nombre" required>
+                    <option value="">Seleccionar año primero</option>
+                  </select>
+                </label>
+                <label>Profesor/a
+                  <select class="materia-profesor" required>
+                    <option value="">Seleccionar materia primero</option>
+                  </select>
+                </label>
+                <label>Comisión
+                  <select class="materia-comision">
+                    <option value="">Seleccionar profesor primero</option>
+                  </select>
+                </label>
+                <label>Cupo restante
+                  <input class="materia-cupo-restante" value="-" readonly>
+                </label>
+                <label>Turno<input class="materia-turno" placeholder="manana / tarde"></label>
+                <label>Horario<input class="materia-horario"></label>
+                <label class="span-2">Observaciones<textarea class="materia-observaciones" rows="2"></textarea></label>
+              </div>
+              <div class="cupo-status muted" data-cupo-status>Seleccioná año, materia, profesor y comisión para ver cupos.</div>
+            </article>
+          </div>
+
+          <div class="materias-footer">
+            <button class="btn" id="addMateriaBtn" type="button">Agregar otra materia</button>
+          </div>
+
+          <div class="actions-row">
+            <button class="btn btn-primary" type="submit">Guardar</button>
+            <button class="btn" type="reset">Limpiar</button>
+          </div>
+      </form>
+    </section>
+
+    <section class="tab-panel" id="historial" role="tabpanel">
+      <div class="card">
+        <div class="config-head">
+          <div>
+            <h2>Historial de Inscripciones</h2>
+            <p class="muted">Desde aqui podés revisar y borrar el historial local con clave.</p>
+          </div>
+          <div class="actions-row">
+            <button class="btn btn-danger" id="clearHistorialBtn" type="button">Borrar historial</button>
+          </div>
+        </div>
+        <div class="filters-row">
+          <label class="historial-search">Buscar
+            <input id="historialSearch" placeholder="Filtrar por fecha, hora, nombre, DNI, materia, profesor, comisión o año">
+          </label>
+        </div>
+
+        <div class="actions-row historial-actions">
+          <button class="btn btn-primary" id="downloadCertBtn" type="button" disabled>📄 Descargar certificado</button>
+          <button class="btn" id="sendCertBtn" type="button" disabled>📧 Enviar certificado</button>
+        </div>
+
+        <div class="table-wrap historial-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Nombre</th>
+                <th>Apellido</th>
+                <th>DNI</th>
+                <th>Materia</th>
+                <th>Profesor/a</th>
+                <th>Comisión</th>
+                <th>Año</th>
+              </tr>
+            </thead>
+            <tbody id="historialTableBody"></tbody>
+          </table>
+        </div>
+        <div id="historialResultado" class="result-box muted">Total: 0 inscripciones</div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="configuracion" role="tabpanel">
+      <div class="card">
+        <div class="config-head">
+          <div>
+            <h2>Configuración de Materias y Docentes</h2>
+            <p class="muted">Edita años, materias, profesores, comisiones, turnos, horarios y cupos usados por el formulario.</p>
+          </div>
+          <div class="actions-row">
+            <button class="btn" id="unlockCatalogBtn" type="button">Autenticar edición</button>
+            <span id="catalogAuthStatus" class="auth-pill is-locked">Bloqueado</span>
+          </div>
+        </div>
+
+        <div class="catalog-search-row">
+          <label>
+            Buscar en configuración
+            <input id="catalogSearchInput" type="text" placeholder="Filtrar por año, materia, profesor, comisión, turno, horario o cupo">
+          </label>
+        </div>
+
+        <div class="table-wrap catalog-table-wrap">
+          <table class="catalog-table">
+            <thead>
+              <tr>
+                <th>Año</th>
+                <th>Materia</th>
+                <th>Profesor/a</th>
+                <th>Comisión</th>
+                <th>Turno</th>
+                <th>Horario</th>
+                <th>Cupo</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="catalogTableBody"></tbody>
+          </table>
+        </div>
+
+        <div class="actions-row config-actions">
+          <button class="btn" id="addCatalogRowBtn" type="button">Agregar fila</button>
+          <button class="btn" id="resetCatalogBtn" type="button">Restaurar catálogo base</button>
+          <button class="btn btn-primary" id="saveCatalogBtn" type="button">Guardar cambios</button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="status-bar" id="statusBar">Listo</footer>
+  </main>
+
+  <script src="materias_catalogo.js"></script>
+  <script src="runtime-config.js"></script>
+  <script src="web_config.js"></script>
+  <script>
+    (function enforceCanonicalHost() {
+      var cfg = window.WEB_CONFIG || {};
+      var canonical = String(cfg.canonicalWebBaseUrl || "").trim();
+      if (!canonical) return;
+
+      try {
+        var canonicalUrl = new URL(canonical);
+        var currentUrl = new URL(window.location.href);
+        var sameOrigin = canonicalUrl.origin === currentUrl.origin;
+        if (sameOrigin) return;
+
+        var markerKey = "tap_web_canonical_redirect_done";
+        if (window.sessionStorage.getItem(markerKey) === "1") return;
+        window.sessionStorage.setItem(markerKey, "1");
+
+        var destination = canonicalUrl.origin + currentUrl.pathname + currentUrl.search + currentUrl.hash;
+        window.location.replace(destination);
+      } catch (_err) {
+        // Si la URL canónica es inválida, continuar sin redirección.
+      }
+    })();
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>

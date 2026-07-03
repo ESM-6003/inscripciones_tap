@@ -1,7 +1,9 @@
 ﻿const STORAGE_KEY = "tap_web_mvp_registros";
 const CATALOGO_KEY = "tap_web_mvp_catalogo";
-const SHEETS_APPEND_URL = String(window.WEB_CONFIG?.sheetsAppendUrl || "").trim();
-const APP_SECRET = String(window.WEB_CONFIG?.appSecret || "").trim();
+const RUNTIME_SHEETS_APPEND_URL = String(window.WEB_RUNTIME_CONFIG?.sheetsAppendUrl || "").trim();
+const RUNTIME_APP_SECRET = String(window.WEB_RUNTIME_CONFIG?.appSecret || "").trim();
+const SHEETS_APPEND_URL = RUNTIME_SHEETS_APPEND_URL || String(window.WEB_CONFIG?.sheetsAppendUrl || "").trim();
+const APP_SECRET = RUNTIME_APP_SECRET || String(window.WEB_CONFIG?.appSecret || "").trim();
 const CERTIFICATE_API_BASE = getCertificateApiBase();
 
 const dom = {
@@ -31,6 +33,8 @@ let historialSeleccionadoId = "";
 const baseCatalogo = normalizeMateriasCatalog(window.MATERIAS_CATALOGO || {});
 let materiasCatalogo = loadCatalogoEditable(baseCatalogo);
 let catalogUnlocked = false;
+let catalogSyncInFlight = false;
+let catalogSyncRetryTimer = null;
 
 init();
 
@@ -38,12 +42,10 @@ async function init() {
   setupTabs();
   setupEvents();
   initConfigCatalogEditor();
-  
-  // Intentar cargar catálogo desde Sheets
-  const remoteCatalog = await loadCatalogFromSheets();
-  if (remoteCatalog && remoteCatalog.length > 0) {
-    materiasCatalogo = remoteCatalog;
-    renderCatalogTable();
+
+  const synced = await syncCatalogFromSheets({ background: false });
+  if (!synced) {
+    scheduleCatalogSyncRetry();
   }
   
   refreshMateriaItemsUI();
@@ -87,6 +89,60 @@ function setupEvents() {
   dom.catalogTableBody?.addEventListener("click", onCatalogTableClick);
   dom.catalogTableBody?.addEventListener("input", onCatalogTableInput);
   dom.catalogSearchInput?.addEventListener("input", renderCatalogTable);
+
+  window.addEventListener("online", () => {
+    void syncCatalogFromSheets({ background: true });
+  });
+}
+
+async function syncCatalogFromSheets({ background = true } = {}) {
+  if (!SHEETS_APPEND_URL || catalogSyncInFlight) return false;
+
+  catalogSyncInFlight = true;
+  try {
+    const remoteCatalog = await loadCatalogFromSheets();
+    if (!remoteCatalog || !remoteCatalog.length) {
+      return false;
+    }
+
+    materiasCatalogo = dedupeCatalog(remoteCatalog);
+    localStorage.setItem(CATALOGO_KEY, JSON.stringify(materiasCatalogo));
+    renderCatalogTable();
+    refreshMateriaItemsUI();
+
+    if (catalogSyncRetryTimer) {
+      window.clearTimeout(catalogSyncRetryTimer);
+      catalogSyncRetryTimer = null;
+    }
+
+    if (background) {
+      setStatus(`Catálogo sincronizado automáticamente: ${materiasCatalogo.length} filas.`);
+    }
+    return true;
+  } finally {
+    catalogSyncInFlight = false;
+  }
+}
+
+function scheduleCatalogSyncRetry() {
+  if (!SHEETS_APPEND_URL || catalogSyncRetryTimer) return;
+
+  const delays = [15000, 30000, 60000, 120000];
+  let index = 0;
+
+  const runAttempt = async () => {
+    catalogSyncRetryTimer = null;
+    const ok = await syncCatalogFromSheets({ background: true });
+    if (ok) return;
+
+    const delay = delays[Math.min(index, delays.length - 1)];
+    index += 1;
+    catalogSyncRetryTimer = window.setTimeout(runAttempt, delay);
+  };
+
+  const firstDelay = delays[index];
+  index += 1;
+  catalogSyncRetryTimer = window.setTimeout(runAttempt, firstDelay);
 }
 
 function onGuardarInscripcion(event) {
@@ -869,9 +925,7 @@ async function loadCatalogFromSheets() {
   if (!SHEETS_APPEND_URL) return null;
 
   try {
-    const url = `${SHEETS_APPEND_URL}?action=loadCatalog${APP_SECRET ? `&appSecret=${encodeURIComponent(APP_SECRET)}` : ""}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const data = await fetchRemoteCatalogWithRetry();
 
     if (data.ok && Array.isArray(data.catalog) && data.catalog.length > 0) {
       return data.catalog.map((row) => ({
@@ -885,10 +939,29 @@ async function loadCatalogFromSheets() {
       }));
     }
   } catch (err) {
-    console.warn("No se pudo cargar catálogo desde Sheets:", err);
+    const message = String(err?.message || err || "");
+    if (message === "timeout") {
+      console.info("Carga de catálogo desde Sheets demorada; se usa copia local por ahora.");
+    } else {
+      console.warn("No se pudo cargar catálogo desde Sheets:", err);
+    }
   }
 
   return null;
+}
+
+async function fetchRemoteCatalogWithRetry() {
+  try {
+    return await fetchRemoteCatalog(20000);
+  } catch (err) {
+    const message = String(err?.message || err || "");
+    if (message !== "timeout") {
+      throw err;
+    }
+  }
+
+  // Reintento por arranque en frio del Apps Script.
+  return fetchRemoteCatalog(30000);
 }
 
 async function saveCatalogToSheets(catalog) {
@@ -906,9 +979,14 @@ async function saveCatalogToSheets(catalog) {
 
     const response = await fetch(SHEETS_APPEND_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify(payload),
     });
+
+    if (response.type === "opaque") {
+      return true;
+    }
 
     const data = await response.json();
     return data.ok === true;
@@ -1369,6 +1447,47 @@ async function fetchRemoteCupoStatus(selection) {
       cleanup();
       reject(new Error("timeout"));
     }, 8000);
+
+    function cleanup() {
+      window.clearTimeout(timeoutId);
+      if (script.parentNode) script.parentNode.removeChild(script);
+      try {
+        delete window[callbackName];
+      } catch {
+        window[callbackName] = undefined;
+      }
+    }
+
+    window[callbackName] = (payload) => {
+      cleanup();
+      resolve(payload || {});
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("load-error"));
+    };
+
+    script.src = url.toString();
+    document.head.appendChild(script);
+  });
+}
+
+async function fetchRemoteCatalog(timeoutMs = 10000) {
+  const callbackName = `tapCatalogLoad_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const url = new URL(SHEETS_APPEND_URL);
+  url.searchParams.set("action", "loadCatalog");
+  if (APP_SECRET) {
+    url.searchParams.set("appSecret", APP_SECRET);
+  }
+  url.searchParams.set("callback", callbackName);
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("timeout"));
+    }, Math.max(1000, Number(timeoutMs) || 10000));
 
     function cleanup() {
       window.clearTimeout(timeoutId);

@@ -9,13 +9,13 @@ Google Apps Script Web App: append-only para inscripciones.
    - Who has access: Anyone
 5) Copiar la URL .../exec a web_migracion/web_config.js -> sheetsAppendUrl
 */
-
 const SPREADSHEET_ID = '1YoyK2aw8x-RJAANB4enPna8HWspLML8aAYr4D_epI2s';
 const SHEET_NAME = 'Inscripciones';
 
 // Opcional: colocar un secreto compartido.
 // Si no queres usar secreto, dejar vacio "".
 const APP_SECRET = '';
+const SCRIPT_VERSION = '2026-09-28-certificate-table-download-v4';
 
 const CSV_FIELDS = [
   'id', 'fecha_inscripcion', 'nombre', 'apellido', 'genero', 'dni',
@@ -24,7 +24,8 @@ const CSV_FIELDS = [
   'saeta', 'obra_social', 'seguro_escolar', 'pago_voluntario',
   'monto', 'permiso', 'observaciones',
   'anio', 'turno', 'materia', 'profesor', 'comision', 'horario',
-  'en_lista_espera'
+  'en_lista_espera',
+  'pais', 'provincia', 'indigena', 'discapacidad', 'discapacidad_cual'
 ];
 
 const CERTIFICATE_SETTINGS = {
@@ -106,6 +107,7 @@ function doPost(e) {
 
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
+    ensureSheetSchema_(sheet);
 
     const existingValues = getExistingValues_(sheet);
     const occupiedBySection = getOccupiedBySection_(existingValues);
@@ -157,98 +159,125 @@ function doGet(e) {
   const params = e && e.parameter ? e.parameter : {};
   const action = String(params.action || '').trim().toLowerCase();
 
-  if (action === 'emit_certificate') {
+  if (action === 'version') {
+    return jsonOrJsonp_({ ok: true, version: SCRIPT_VERSION }, params.callback);
+  }
+
+  if (action === 'emit_certificate' || action === 'send_certificate' || action === 'download_certificate') {
+    return handleCertificateRequest_(params, action);
+  }
+
+  if (action === 'status') {
+    try {
+      if (APP_SECRET && params.appSecret !== APP_SECRET) {
+        return jsonOrJsonp_({ ok: false, error: 'No autorizado' }, params.callback);
+      }
+
+      const section = {
+        anio: params.anio,
+        materia: params.materia,
+        profesor: params.profesor,
+        comision: params.comision,
+      };
+      const cupo = toCapacity_(params.cupo);
+      const key = sectionKey_(section);
+
+      const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+      const sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
+      ensureSheetSchema_(sheet);
+      const existingValues = getExistingValues_(sheet);
+      const occupiedBySection = getOccupiedBySection_(existingValues);
+      const ocupados = occupiedBySection.get(key) || 0;
+      const restantes = Number.isFinite(cupo) ? Math.max(0, cupo - ocupados) : null;
+
+      return jsonOrJsonp_(
+        {
+          ok: true,
+          cupo: Number.isFinite(cupo) ? cupo : String(params.cupo || ''),
+          ocupados: ocupados,
+          restantes: restantes,
+          lista_espera: Number.isFinite(cupo) ? restantes === 0 : false,
+        },
+        params.callback
+      );
+    } catch (err) {
+      return jsonOrJsonp_({ ok: false, error: String(err) }, params.callback);
+    }
+  }
+
+  if (action === 'loadcatalog') {
+    try {
+      if (APP_SECRET && params.appSecret !== APP_SECRET) {
+        return jsonOrJsonp_({ ok: false, error: 'No autorizado' }, params.callback);
+      }
+
+      const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+      const catalogSheet = ss.getSheetByName('Catalogo');
+      
+      if (!catalogSheet) {
+        return jsonOrJsonp_({ ok: true, catalog: null }, params.callback);
+      }
+
+      const data = catalogSheet.getDataRange().getValues();
+      if (data.length < 2) {
+        return jsonOrJsonp_({ ok: true, catalog: [] }, params.callback);
+      }
+
+      const headers = data[0];
+      const catalog = data.slice(1).map(row => {
+        const obj = {};
+        headers.forEach((header, idx) => {
+          obj[header] = row[idx] || '';
+        });
+        return obj;
+      });
+
+      return jsonOrJsonp_({ ok: true, catalog: catalog }, params.callback);
+    } catch (err) {
+      return jsonOrJsonp_({ ok: false, error: String(err) }, params.callback);
+    }
+  }
+
+  return jsonOrJsonp_({ ok: true, service: 'sheets-append-webapp' }, params.callback);
+}
+
+function handleCertificateRequest_(params, action) {
+  try {
     if (APP_SECRET && params.appSecret !== APP_SECRET) {
-      return jsonOrJsonp_({ ok: false, error: 'No autorizado' }, params.callback);
+      return jsonOrJsonp_({ ok: false, error: 'No autorizado', version: SCRIPT_VERSION }, params.callback);
     }
 
     const record = decodeRecordParam_(params.record);
     if (!record) {
-      return jsonOrJsonp_({ ok: false, error: 'Record invalido o faltante' }, params.callback);
+      return jsonOrJsonp_({ ok: false, error: 'Record invalido o faltante', version: SCRIPT_VERSION }, params.callback);
     }
 
     const cert = buildCertificatePdfBlob_(record);
     if (!cert.ok) {
-      return jsonOrJsonp_({ ok: false, error: cert.error || 'No se pudo generar el certificado' }, params.callback);
+      return jsonOrJsonp_({
+        ok: false,
+        error: cert.error || 'No se pudo generar el certificado',
+        version: SCRIPT_VERSION,
+      }, params.callback);
     }
 
-    const emailResult = sendCertificateEmail_(record, cert.blob);
-
-    return jsonOrJsonp_(
-      {
-        ok: true,
-        fileName: cert.fileName,
-        pdfBase64: Utilities.base64EncodeWebSafe(cert.blob.getBytes()),
-        emailSent: emailResult.ok,
-        emailMessage: emailResult.message,
-      },
-      params.callback
-    );
-  }
-
-  if (action === 'status') {
-    if (APP_SECRET && params.appSecret !== APP_SECRET) {
-      return jsonOrJsonp_({ ok: false, error: 'No autorizado' }, params.callback);
-    }
-
-    const section = {
-      anio: params.anio,
-      materia: params.materia,
-      profesor: params.profesor,
-      comision: params.comision,
+    const result = {
+      ok: true,
+      version: SCRIPT_VERSION,
     };
-    const cupo = toCapacity_(params.cupo);
-    const key = sectionKey_(section);
-
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
-    const existingValues = getExistingValues_(sheet);
-    const occupiedBySection = getOccupiedBySection_(existingValues);
-    const ocupados = occupiedBySection.get(key) || 0;
-    const restantes = Number.isFinite(cupo) ? Math.max(0, cupo - ocupados) : null;
-
-    return jsonOrJsonp_(
-      {
-        ok: true,
-        cupo: Number.isFinite(cupo) ? cupo : String(params.cupo || ''),
-        ocupados: ocupados,
-        restantes: restantes,
-        lista_espera: Number.isFinite(cupo) ? restantes === 0 : false,
-      },
-      params.callback
-    );
+    if (action !== 'download_certificate') {
+      const emailResult = sendCertificateEmail_(record, cert.blob);
+      result.emailSent = emailResult.ok;
+      result.emailMessage = emailResult.message;
+    }
+    if (action !== 'send_certificate') {
+      result.fileName = cert.fileName;
+      result.pdfBase64 = Utilities.base64EncodeWebSafe(cert.blob.getBytes());
+    }
+    return jsonOrJsonp_(result, params.callback);
+  } catch (err) {
+    return jsonOrJsonp_({ ok: false, error: String(err), version: SCRIPT_VERSION }, params.callback);
   }
-
-  if (action === 'loadcatalog') {
-    if (APP_SECRET && params.appSecret !== APP_SECRET) {
-      return jsonOrJsonp_({ ok: false, error: 'No autorizado' }, params.callback);
-    }
-
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const catalogSheet = ss.getSheetByName('Catalogo');
-    
-    if (!catalogSheet) {
-      return jsonOrJsonp_({ ok: true, catalog: null }, params.callback);
-    }
-
-    const data = catalogSheet.getDataRange().getValues();
-    if (data.length < 2) {
-      return jsonOrJsonp_({ ok: true, catalog: [] }, params.callback);
-    }
-
-    const headers = data[0];
-    const catalog = data.slice(1).map(row => {
-      const obj = {};
-      headers.forEach((header, idx) => {
-        obj[header] = row[idx] || '';
-      });
-      return obj;
-    });
-
-    return jsonOrJsonp_({ ok: true, catalog: catalog }, params.callback);
-  }
-
-  return jsonOrJsonp_({ ok: true, service: 'sheets-append-webapp' }, params.callback);
 }
 
 function normalizeRecords(body) {
@@ -277,6 +306,26 @@ function parseBody(raw) {
 function asCell(value) {
   if (value === undefined || value === null) return '';
   return value;
+}
+
+function ensureSheetSchema_(sheet) {
+  const requiredColumns = CSV_FIELDS.length;
+  const currentColumns = sheet.getMaxColumns();
+  if (currentColumns < requiredColumns) {
+    sheet.insertColumnsAfter(currentColumns, requiredColumns - currentColumns);
+  }
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, requiredColumns).setValues([CSV_FIELDS]);
+    return;
+  }
+
+  const headers = sheet.getRange(1, 1, 1, requiredColumns).getDisplayValues()[0];
+  CSV_FIELDS.forEach((field, index) => {
+    if (!String(headers[index] || '').trim()) {
+      sheet.getRange(1, index + 1).setValue(field);
+    }
+  });
 }
 
 function getNextNumericId_(sheet) {
@@ -415,9 +464,14 @@ function buildCertificatePdfBlob_(record) {
     appendFieldLine_(body, 'Fecha de Nacimiento', record.fecha_nacimiento || '');
     appendFieldLine_(body, 'Edad', record.edad || '');
     appendFieldLine_(body, 'Legajo', legajo || '');
+    appendFieldLine_(body, 'País', record.pais || '');
+    appendFieldLine_(body, 'Provincia', record.provincia || '');
     appendFieldLine_(body, 'Domicilio', record.direccion || record.domicilio || '');
     appendFieldLine_(body, 'Telefono', record.telefono || '');
     appendFieldLine_(body, 'Mail', record.email || record.mail || '');
+    appendFieldLine_(body, 'Indígena', record.indigena || '');
+    appendFieldLine_(body, 'Discapacidad', record.discapacidad || '');
+    appendFieldLine_(body, '¿Cuál?', record.discapacidad_cual || '');
     body.appendParagraph('');
 
     appendSectionTitle_(body, 'Datos de Padres/Tutores:');
@@ -427,16 +481,19 @@ function buildCertificatePdfBlob_(record) {
     body.appendParagraph('');
 
     appendSectionTitle_(body, 'Datos de Inscripcion:');
-    appendFieldLine_(body, 'Anio', record.anio || record.año || '', { suffix: '°' });
-    appendFieldLine_(body, 'Turno', record.turno || 'N/A');
-    appendFieldLine_(body, 'Materia', record.materia || 'N/A');
-    appendFieldLine_(body, 'Profesor/a', record.profesor || 'N/A');
-    appendFieldLine_(body, 'Comision', record.comision || 'N/A');
-    appendFieldLine_(body, 'Horario', record.horario || '');
-
-    if (isWaitlistValue_(record.en_lista_espera)) {
-      appendWarningLine_(body, 'EN LISTA DE ESPERA');
-    }
+    const materias = Array.isArray(record.materias) && record.materias.length
+      ? record.materias
+      : [{
+        anio: record.anio || record.año || '',
+        materia: record.materia || '',
+        profesor: record.profesor || '',
+        comision: record.comision || '',
+        turno: record.turno || '',
+        horario: record.horario || '',
+        observaciones: record.observaciones || '',
+        en_lista_espera: record.en_lista_espera || '',
+      }];
+    appendMateriasTable_(body, materias);
     body.appendParagraph('');
 
     appendSectionTitle_(body, 'Informacion Adicional:');
@@ -449,22 +506,15 @@ function buildCertificatePdfBlob_(record) {
     }
     appendFieldLine_(body, 'Permiso', record.permiso || '');
 
-    const obs = String(record.observaciones || '').trim();
-    if (obs) {
-      appendFieldLine_(body, 'Observaciones', '');
-      splitLongText_(obs, 95).forEach((line) => {
-        appendPlainLine_(body, `  ${line}`);
-      });
-    }
-
     body.appendParagraph('');
-    appendPlainLine_(
+    appendFieldLine_(
       body,
-      `Fecha de emision: ${Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires', 'dd/MM/yyyy HH:mm')}`
+      'Fecha de emision',
+      Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires', 'dd/MM/yyyy HH:mm')
     );
     const fechaInsc = formatFechaInscripcion_(record.fecha_inscripcion);
     if (fechaInsc) {
-      appendPlainLine_(body, `Fecha de inscripcion: ${fechaInsc}`);
+      appendFieldLine_(body, 'Fecha de inscripcion', fechaInsc);
     }
 
     body.appendParagraph('');
@@ -478,7 +528,7 @@ function buildCertificatePdfBlob_(record) {
 
     return { ok: true, blob: pdfBlob, fileName: fileName };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    return { ok: false, error: String(err), version: SCRIPT_VERSION };
   } finally {
     try {
       if (file) {
@@ -651,12 +701,86 @@ function appendFieldLine_(body, label, value, opts) {
   const raw = String(value == null ? '' : value).trim();
   if (!raw) return;
   const suffix = String(options.suffix || '');
-  appendPlainLine_(body, `${label}: ${raw}${suffix}`);
+  const paragraph = body.appendParagraph('');
+  paragraph.setAttributes(baseTextAttrs_());
+  const labelText = paragraph.appendText(`${label}: `);
+  labelText.setAttributes(Object.assign({}, baseTextAttrs_(), { [DocumentApp.Attribute.BOLD]: true }));
+  const valueText = paragraph.appendText(`${raw}${suffix}`);
+  valueText.setAttributes(Object.assign({}, baseTextAttrs_(), { [DocumentApp.Attribute.BOLD]: false }));
+}
+
+function appendMateriasTable_(body, materias) {
+  const valueOrPlaceholder = (value) => String(value == null ? '' : value).trim() || 'No especificado';
+  const rows = [
+    ['Materia', 'Profesor/a', 'Comisión', 'Turno', 'Horario'],
+    ...materias.map((materia) => {
+      const materiaName = valueOrPlaceholder(materia.materia);
+      const anio = String(materia.anio || materia.año || '').trim();
+      const materiaLabel = anio && materiaName !== 'No especificado'
+        ? `${materiaName} (${anio}° año)`
+        : materiaName;
+      return [
+        materiaLabel,
+        valueOrPlaceholder(materia.profesor),
+        valueOrPlaceholder(materia.comision),
+        valueOrPlaceholder(materia.turno),
+        valueOrPlaceholder(materia.horario),
+      ];
+    }),
+  ];
+  const table = body.appendTable(rows);
+  table.setBorderColor('#9B9B9B');
+  table.setBorderWidth(0.75);
+
+  for (let rowIndex = 0; rowIndex < table.getNumRows(); rowIndex += 1) {
+    const row = table.getRow(rowIndex);
+    for (let cellIndex = 0; cellIndex < row.getNumCells(); cellIndex += 1) {
+      const cell = row.getCell(cellIndex);
+      cell.setPaddingTop(4);
+      cell.setPaddingBottom(4);
+      cell.setPaddingLeft(5);
+      cell.setPaddingRight(5);
+      if (rowIndex === 0) cell.setBackgroundColor('#EAEAEA');
+
+      const paragraph = cell.getChild(0).asParagraph();
+      const text = paragraph.editAsText();
+      text.setBold(rowIndex === 0);
+      text.setFontSize(8);
+    }
+  }
+
+  materias.forEach((materia) => {
+    const materiaName = String(materia.materia || 'N/A').trim();
+    const observations = String(materia.observaciones || '').trim();
+    if (observations) appendFieldLine_(body, `Observaciones - ${materiaName}`, observations);
+    if (isWaitlistValue_(materia.en_lista_espera)) {
+      appendWarningLine_(body, `EN LISTA DE ESPERA: ${materiaName}`);
+    }
+  });
+  const spacer = body.appendParagraph('');
+  spacer.setSpacingAfter(4);
+}
+
+function setCellTextStyle_(paragraph, label, value) {
+  const content = paragraph.editAsText();
+  const fullText = content.getText();
+  if (!fullText) return;
+
+  content.setBold(false);
+  if (label) {
+    const labelEnd = Math.min(String(label).length, fullText.length) - 1;
+    if (labelEnd >= 0) content.setBold(0, labelEnd, true);
+  }
+  if (value) {
+    const valueStart = fullText.length - String(value).length;
+    if (valueStart < fullText.length) content.setBold(Math.max(0, valueStart), fullText.length - 1, false);
+  }
 }
 
 function appendPlainLine_(body, text) {
   const p = body.appendParagraph(String(text || ''));
   p.setAttributes(baseTextAttrs_());
+  p.editAsText().setBold(false);
 }
 
 function appendWarningLine_(body, text) {

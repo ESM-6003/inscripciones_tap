@@ -48,11 +48,43 @@
                 <option>Otrx</option>
               </select>
             </label>
+            <label>País
+              <select name="pais" required>
+                <option value="">Seleccionar país</option>
+              </select>
+            </label>
+            <label>Provincia
+              <select name="provincia" disabled>
+                <option value="">Seleccionar provincia</option>
+              </select>
+            </label>
+            <label id="provinciaOtroLabel" hidden>Provincia/estado
+              <input name="provincia_otro" autocomplete="address-level1" disabled>
+            </label>
+            <label>Indígena
+              <select name="indigena" required>
+                <option value="">Seleccionar</option>
+                <option>No</option>
+                <option>Si</option>
+              </select>
+            </label>
+            <label>Discapacidad
+              <select name="discapacidad" required>
+                <option value="">Seleccionar</option>
+                <option>No</option>
+                <option>Si</option>
+              </select>
+            </label>
+            <label>¿Cuál?
+              <input name="discapacidad_cual" disabled>
+            </label>
             <label>Telefono<input name="telefono"></label>
             <label>Edad<input name="edad" inputmode="numeric"></label>
             <label>Domicilio<input name="direccion"></label>
-            <label>Email<input name="email" type="email"></label>
-            <label>Fecha nacimiento<input name="fecha_nacimiento" placeholder="DD-MM-YYYY"></label>
+            <label>Email
+              <input name="email" type="email" required pattern="[^\s@]+@[^\s@]+\.[^\s@]+" title="Ingresá un email con @ y un dominio, por ejemplo nombre@correo.com.ar">
+            </label>
+            <label>Fecha de nacimiento<input name="fecha_nacimiento" type="date"></label>
           </div>
 
           <h3>Datos Responsable o Tutor/a</h3>
@@ -74,7 +106,9 @@
             <label>Pago Voluntario
               <select name="pago_voluntario"><option>No</option><option>Si</option></select>
             </label>
-            <label>Monto<input name="monto" inputmode="numeric"></label>
+            <label>Monto (Pesos argentinos)
+              <span class="currency-input"><span aria-hidden="true">$</span><input name="monto" type="number" min="1000" step="1" inputmode="numeric"></span>
+            </label>
             <label>Permiso
               <select name="permiso"><option>No</option><option>Si</option></select>
             </label>

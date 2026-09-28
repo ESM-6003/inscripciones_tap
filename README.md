@@ -71,7 +71,11 @@ Nota técnica: el frontend usa un POST simple compatible con Apps Script (`no-co
 Al guardar inscripciones desde el formulario:
 - se guarda localmente en el navegador
 - y se hace append en Google Sheets directo por Web App
-- y se genera, descarga y envía automáticamente el certificado PDF para cada materia guardada
+- y se genera, descarga y envía automáticamente un certificado PDF con todas las materias elegidas por estudiante
+
+El formulario incluye país y provincia, pertenencia indígena, discapacidad y su detalle. El email es obligatorio y debe tener un dominio válido; la fecha de nacimiento se selecciona con el calendario. El monto se ingresa en pesos argentinos y, si se informa, debe ser de al menos $1.000.
+
+Al agregar campos al formulario, actualizar `CSV_FIELDS` en `google_apps_script/Code.gs` y volver a desplegar el Web App. El script agrega los encabezados que falten al final de la pestaña `Inscripciones`; estos campos se completan para las nuevas inscripciones, no para filas históricas.
 
 Importante: esta integración es append-only. No borra ni reemplaza filas en la planilla.
 
@@ -82,7 +86,7 @@ Importante: esta integración es append-only. No borra ni reemplaza filas en la 
 - Si una comisión supera su cupo, el registro se guarda con `en_lista_espera = Si` automáticamente.
 - El frontend consulta estado de cupos central (`action=status`) para mostrar cuántos lugares quedan.
 
-Cuando actualices `google_apps_script/Code.gs`, redeploy de nuevo la Web App para que tome la nueva lógica.
+Cuando actualices `google_apps_script/Code.gs`, crea una nueva implementación de la Web App para que tome la nueva lógica. Si también cambiaste `app.js` o `web_config.js`, vuelve a publicar el sitio web. Para verificar qué versión responde Apps Script, abre `sheetsAppendUrl?action=version&callback=console.log`; la versión actual debe informar `2026-09-28-certificate-table-download-v4`. El certificado presenta las materias en una sola tabla con las columnas Materia, Profesor/a, Comisión, Turno y Horario. El correo y la descarga del PDF se solicitan por separado para que un fallo de descarga no oculte el resultado del correo; las solicitudes de envío no se reintentan automáticamente para evitar duplicados. La descarga valida la respuesta PDF y mantiene activa su URL temporal para permitir que el navegador inicie la descarga. El botón **Enviar certificado** del historial también usa el Apps Script configurado y muestra el mensaje de error del envío.
 
 ### Modo alternativo (puente local)
 

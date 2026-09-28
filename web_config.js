@@ -5,7 +5,7 @@ window.WEB_CONFIG = {
 
   // Pegar aqui la URL de implementacion Web App de Google Apps Script.
   // Ejemplo: "https://script.google.com/macros/s/AKfycb.../exec"
-  sheetsAppendUrl: "https://script.google.com/macros/s/AKfycbx71QG_yPxZFzWoWQ4xdCeofWT-Pgg-fZ1kS_tE0aqVEyht9PdteJ-4PgIoeKudv04r/exec",
+  sheetsAppendUrl: "https://script.google.com/macros/s/AKfycbwKR8YP8OPyNsGysRNWqypqjN3Y7vTNMcyMC9IRMNGdmGAb6H_bRKocn6ZiZ5TmGLQ/exec",
 
   // Base opcional para forzar otro servidor de certificados.
   // Si queda vacio, la web usa automaticamente el origen actual.

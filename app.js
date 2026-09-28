@@ -5,6 +5,14 @@ const RUNTIME_APP_SECRET = String(window.WEB_RUNTIME_CONFIG?.appSecret || "").tr
 const SHEETS_APPEND_URL = RUNTIME_SHEETS_APPEND_URL || String(window.WEB_CONFIG?.sheetsAppendUrl || "").trim();
 const APP_SECRET = RUNTIME_APP_SECRET || String(window.WEB_CONFIG?.appSecret || "").trim();
 const CERTIFICATE_API_BASE = getCertificateApiBase();
+const COUNTRY_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW";
+const PROVINCES_AR = [
+  "Buenos Aires", "Catamarca", "Chaco", "Chubut", "Ciudad Autónoma de Buenos Aires",
+  "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja",
+  "Mendoza", "Misiones", "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis",
+  "Santa Cruz", "Santa Fe", "Santiago del Estero", "Tierra del Fuego, Antártida e Islas del Atlántico Sur",
+  "Tucumán",
+];
 
 const dom = {
   tabs: document.querySelectorAll(".tab"),
@@ -40,6 +48,7 @@ init();
 
 async function init() {
   setupTabs();
+  setupStudentFields();
   setupEvents();
   initConfigCatalogEditor();
 
@@ -72,6 +81,10 @@ function setupTabs() {
 function setupEvents() {
   dom.form?.addEventListener("submit", onGuardarInscripcion);
   dom.form?.addEventListener("reset", onResetFormulario);
+  dom.form?.elements.namedItem("pais")?.addEventListener("change", updateCountryProvinceField);
+  dom.form?.elements.namedItem("discapacidad")?.addEventListener("change", updateDisabilityField);
+  dom.form?.elements.namedItem("email")?.addEventListener("input", validateEmailField);
+  dom.form?.elements.namedItem("monto")?.addEventListener("input", validateAmountField);
   dom.addMateriaBtn?.addEventListener("click", onAgregarMateria);
   dom.materiasContainer?.addEventListener("click", onMateriaContainerClick);
   dom.materiasContainer?.addEventListener("change", onMateriaContainerChange);
@@ -93,6 +106,78 @@ function setupEvents() {
   window.addEventListener("online", () => {
     void syncCatalogFromSheets({ background: true });
   });
+}
+
+function setupStudentFields() {
+  const countrySelect = dom.form?.elements.namedItem("pais");
+  const provinceSelect = dom.form?.elements.namedItem("provincia");
+  if (countrySelect instanceof HTMLSelectElement) {
+    const displayNames = typeof Intl.DisplayNames === "function"
+      ? new Intl.DisplayNames(["es"], { type: "region" })
+      : null;
+    const countries = COUNTRY_CODES.split(" ")
+      .map((code) => ({ name: displayNames?.of(code) || code }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+    countries.forEach(({ name }) => countrySelect.add(new Option(name, name)));
+  }
+  if (provinceSelect instanceof HTMLSelectElement) {
+    PROVINCES_AR.forEach((province) => provinceSelect.add(new Option(province, province)));
+  }
+  updateCountryProvinceField();
+  updateDisabilityField();
+}
+
+function updateCountryProvinceField() {
+  const countrySelect = dom.form?.elements.namedItem("pais");
+  const provinceSelect = dom.form?.elements.namedItem("provincia");
+  const otherProvinceInput = dom.form?.elements.namedItem("provincia_otro");
+  const otherProvinceLabel = document.getElementById("provinciaOtroLabel");
+  if (
+    !(countrySelect instanceof HTMLSelectElement) ||
+    !(provinceSelect instanceof HTMLSelectElement) ||
+    !(otherProvinceInput instanceof HTMLInputElement) ||
+    !(otherProvinceLabel instanceof HTMLLabelElement)
+  ) return;
+
+  const isArgentina = countrySelect.value === "Argentina";
+  provinceSelect.disabled = !isArgentina;
+  provinceSelect.required = isArgentina && Boolean(countrySelect.value);
+  otherProvinceLabel.hidden = isArgentina || !countrySelect.value;
+  otherProvinceInput.disabled = isArgentina || !countrySelect.value;
+  otherProvinceInput.required = !isArgentina && Boolean(countrySelect.value);
+  if (isArgentina || !countrySelect.value) {
+    otherProvinceInput.value = "";
+  } else {
+    provinceSelect.value = "";
+  }
+}
+
+function updateDisabilityField() {
+  const disability = dom.form?.elements.namedItem("discapacidad");
+  const detail = dom.form?.elements.namedItem("discapacidad_cual");
+  if (!(disability instanceof HTMLSelectElement) || !(detail instanceof HTMLInputElement)) return;
+  const required = disability.value === "Si";
+  detail.disabled = !required;
+  detail.required = required;
+  if (!required) detail.value = "";
+}
+
+function validateEmailField(event) {
+  const input = event.currentTarget;
+  if (!(input instanceof HTMLInputElement)) return;
+  const value = input.value.trim();
+  input.setCustomValidity(value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+    ? "Ingresá un email con @ y un dominio válido, por ejemplo nombre@correo.com.ar."
+    : "");
+}
+
+function validateAmountField(event) {
+  const input = event.currentTarget;
+  if (!(input instanceof HTMLInputElement)) return;
+  const value = input.value.trim();
+  input.setCustomValidity(value && (!Number.isFinite(Number(value)) || Number(value) < 1000)
+    ? "El monto debe ser exacto y no puede ser menor a $1.000."
+    : "");
 }
 
 async function syncCatalogFromSheets({ background = true } = {}) {
@@ -149,10 +234,26 @@ function onGuardarInscripcion(event) {
   event.preventDefault();
   const data = new FormData(dom.form);
   const raw = Object.fromEntries(data.entries());
+  raw.provincia = raw.pais === "Argentina" ? raw.provincia : raw.provincia_otro;
+  delete raw.provincia_otro;
   const materiasResult = getMateriasDelFormulario();
+  const email = String(raw.email || "").trim();
+  const monto = String(raw.monto || "").trim();
 
   if (!raw.nombre || !raw.apellido || !raw.dni || !raw.genero) {
     setStatus("Faltan datos obligatorios del estudiante (nombre, apellido, DNI y genero).", true);
+    return;
+  }
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setStatus("Ingresá un email válido con @ y un dominio, por ejemplo nombre@correo.com.ar.", true);
+    dom.form.elements.namedItem("email")?.reportValidity();
+    return;
+  }
+
+  if (monto && (!Number.isFinite(Number(monto)) || Number(monto) < 1000)) {
+    setStatus("El monto debe ser exacto y no puede ser menor a $1.000.", true);
+    dom.form.elements.namedItem("monto")?.reportValidity();
     return;
   }
 
@@ -183,7 +284,7 @@ function onGuardarInscripcion(event) {
   renderHistorial();
 
   setStatus(`Se guardaron ${nuevos.length} materias para ${raw.nombre} ${raw.apellido}.`);
-  void procesarCertificadosAutomaticos(nuevos);
+  void procesarCertificadosAutomaticos([buildCertificateRecord(nuevos)]);
   void appendToGoogleSheets(nuevos);
 }
 
@@ -246,29 +347,33 @@ async function procesarCertificadosAutomaticosViaAppsScript(records) {
     const nombre = `${registro.nombre || ""} ${registro.apellido || ""}`.trim() || "registro";
     setStatus(`Procesando certificado ${index + 1}/${records.length} para ${nombre}...`);
 
+    let emailResult;
     try {
-      const data = await fetchRemoteEmitCertificate(registro);
-      if (!data.ok) {
-        throw new Error(data.error || "No se pudo generar el certificado.");
-      }
+      emailResult = await fetchRemoteSendCertificate(registro);
+    } catch (error) {
+      emailResult = {
+        ok: false,
+        emailSent: false,
+        emailMessage: `No se pudo confirmar el envío; no se reintentó para evitar duplicados: ${error.message || error}`,
+      };
+    }
 
-      if (!data.pdfBase64) {
-        throw new Error("La respuesta no incluyó el PDF del certificado.");
-      }
+    try {
+      const data = await fetchRemoteDownloadCertificate(registro);
+      await downloadCertificatePdf(data, registro);
 
-      const blob = base64ToBlob(data.pdfBase64, "application/pdf");
-      const filename = String(data.fileName || buildCertificateFilename(registro)).trim();
-      triggerBlobDownload(blob, filename || buildCertificateFilename(registro));
-
-      if (data.emailSent) {
+      if (emailResult.emailSent) {
         setStatus(`Certificado descargado y enviado para ${nombre}.`);
-      } else if (data.emailMessage) {
-        setStatus(`Certificado descargado para ${nombre}. Email: ${data.emailMessage}`, true);
+      } else if (emailResult.emailMessage) {
+        setStatus(`Certificado descargado para ${nombre}. Email: ${emailResult.emailMessage}`, true);
       } else {
         setStatus(`Certificado descargado para ${nombre}.`);
       }
     } catch (error) {
-      setStatus(`No se pudo procesar el certificado de ${nombre}: ${error.message || error}`, true);
+      const emailStatus = emailResult.emailSent
+        ? "El email sí fue confirmado como enviado."
+        : `Estado del email: ${emailResult.emailMessage || "no confirmado"}.`;
+      setStatus(`No se pudo descargar el certificado de ${nombre}: ${error.message || error}. ${emailStatus}`, true);
     }
   }
 }
@@ -322,6 +427,10 @@ async function appendToGoogleSheets(records) {
 
 function onResetFormulario() {
   window.setTimeout(() => {
+    dom.form.elements.namedItem("email")?.setCustomValidity("");
+    dom.form.elements.namedItem("monto")?.setCustomValidity("");
+    updateCountryProvinceField();
+    updateDisabilityField();
     resetMaterias();
     setStatus("Formulario limpiado.");
   }, 0);
@@ -951,17 +1060,20 @@ async function loadCatalogFromSheets() {
 }
 
 async function fetchRemoteCatalogWithRetry() {
-  try {
-    return await fetchRemoteCatalog(20000);
-  } catch (err) {
-    const message = String(err?.message || err || "");
-    if (message !== "timeout") {
-      throw err;
+  const delays = [0, 2000, 5000];
+  let lastError;
+  for (const delay of delays) {
+    if (delay) {
+      await new Promise((resolve) => window.setTimeout(resolve, delay));
+    }
+    try {
+      return await fetchRemoteCatalog(20000);
+    } catch (error) {
+      lastError = error;
     }
   }
 
-  // Reintento por arranque en frio del Apps Script.
-  return fetchRemoteCatalog(30000);
+  throw lastError || new Error("No se pudo cargar el catálogo desde Apps Script.");
 }
 
 async function saveCatalogToSheets(catalog) {
@@ -1144,7 +1256,45 @@ function updateHistorialActionState() {
 function getSelectedHistorialRecord() {
   const selectedId = String(historialSeleccionadoId || "").trim();
   if (!selectedId) return null;
-  return registros.find((registro) => String(registro.id || "") === selectedId) || null;
+  const selected = registros.find((registro) => String(registro.id || "") === selectedId);
+  if (!selected) return null;
+  const sameEnrollment = selected.dni && selected.fecha_inscripcion
+    ? registros.filter((registro) =>
+        String(registro.dni || "") === String(selected.dni) &&
+        String(registro.fecha_inscripcion || "") === String(selected.fecha_inscripcion)
+      )
+    : [selected];
+  return buildCertificateRecord(sameEnrollment.length ? sameEnrollment : [selected]);
+}
+
+function buildCertificateRecord(records) {
+  const [first] = records;
+  const materias = records.map((record) => ({
+    anio: record.anio || "",
+    materia: record.materia || "",
+    profesor: record.profesor || "",
+    comision: record.comision || "",
+    turno: record.turno || "",
+    horario: record.horario || "",
+    observaciones: record.observaciones || "",
+    en_lista_espera: record.en_lista_espera || "No",
+  }));
+  const join = (key) => materias.map((materia) => materia[key]).filter(Boolean).join("\n");
+  return {
+    ...first,
+    materias,
+    anio: join("anio"),
+    materia: materias.map((materia) => `${materia.anio ? `${materia.anio}° - ` : ""}${materia.materia}`).join("\n"),
+    profesor: join("profesor"),
+    comision: join("comision"),
+    turno: join("turno"),
+    horario: join("horario"),
+    observaciones: materias
+      .filter((materia) => materia.observaciones)
+      .map((materia) => `${materia.materia}: ${materia.observaciones}`)
+      .join("\n"),
+    en_lista_espera: materias.some((materia) => isWaitlistValue(materia.en_lista_espera)) ? "Si" : "No",
+  };
 }
 
 async function onDescargarCertificadoSeleccionado() {
@@ -1170,6 +1320,17 @@ async function onEnviarCertificadoSeleccionado() {
 async function descargarCertificadoSeleccionado(record = null) {
   const registro = record || getSelectedHistorialRecord();
   if (!registro) return;
+
+  if (SHEETS_APPEND_URL) {
+    try {
+      const data = await fetchRemoteDownloadCertificate(registro);
+      const filename = await downloadCertificatePdf(data, registro);
+      setStatus(`Certificado descargado: ${filename || buildCertificateFilename(registro)}`);
+    } catch (error) {
+      setStatus(`No se pudo descargar el certificado: ${error.message || error}`, true);
+    }
+    return;
+  }
 
   const endpoint = buildCertificateEndpoint("/api/certificados/download");
 
@@ -1205,6 +1366,19 @@ async function descargarCertificadoSeleccionado(record = null) {
 async function enviarCertificadoSeleccionado(record = null) {
   const registro = record || getSelectedHistorialRecord();
   if (!registro) return;
+
+  if (SHEETS_APPEND_URL) {
+    try {
+      const data = await fetchRemoteSendCertificate(registro);
+      if (!data.ok || !data.emailSent) {
+        throw new Error(data.emailMessage || data.error || "Apps Script no confirmó el envío del email.");
+      }
+      setStatus(data.emailMessage || `Certificado enviado a ${registro.email}.`);
+    } catch (error) {
+      setStatus(`No se pudo confirmar el envío del certificado: ${error.message || error}. No se reintentó automáticamente.`, true);
+    }
+    return;
+  }
 
   const endpoint = buildCertificateEndpoint("/api/certificados/send");
 
@@ -1270,9 +1444,26 @@ function triggerBlobDownload(blob, filename) {
   document.body.appendChild(link);
   link.click();
   window.setTimeout(() => {
-    URL.revokeObjectURL(url);
     link.remove();
-  }, 0);
+  }, 1000);
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+async function downloadCertificatePdf(data, record) {
+  if (!data?.ok || !data.pdfBase64) {
+    throw new Error(data?.error || "Apps Script no devolvió el PDF del certificado.");
+  }
+
+  const blob = base64ToBlob(data.pdfBase64, "application/pdf");
+  const pdfHeader = await blob.slice(0, 5).text();
+  if (blob.size < 5 || pdfHeader !== "%PDF-") {
+    throw new Error("La respuesta de Apps Script no contiene un PDF válido.");
+  }
+
+  const filename = String(data.fileName || buildCertificateFilename(record)).trim();
+  const safeFilename = filename || buildCertificateFilename(record);
+  triggerBlobDownload(blob, safeFilename);
+  return safeFilename;
 }
 
 function sanitizeFilenamePart(value) {
@@ -1441,36 +1632,7 @@ async function fetchRemoteCupoStatus(selection) {
   }
   url.searchParams.set("callback", callbackName);
 
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    const timeoutId = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("timeout"));
-    }, 8000);
-
-    function cleanup() {
-      window.clearTimeout(timeoutId);
-      if (script.parentNode) script.parentNode.removeChild(script);
-      try {
-        delete window[callbackName];
-      } catch {
-        window[callbackName] = undefined;
-      }
-    }
-
-    window[callbackName] = (payload) => {
-      cleanup();
-      resolve(payload || {});
-    };
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("load-error"));
-    };
-
-    script.src = url.toString();
-    document.head.appendChild(script);
-  });
+  return requestJsonp(url, callbackName, 30000);
 }
 
 async function fetchRemoteCatalog(timeoutMs = 10000) {
@@ -1482,56 +1644,39 @@ async function fetchRemoteCatalog(timeoutMs = 10000) {
   }
   url.searchParams.set("callback", callbackName);
 
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    const timeoutId = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("timeout"));
-    }, Math.max(1000, Number(timeoutMs) || 10000));
-
-    function cleanup() {
-      window.clearTimeout(timeoutId);
-      if (script.parentNode) script.parentNode.removeChild(script);
-      try {
-        delete window[callbackName];
-      } catch {
-        window[callbackName] = undefined;
-      }
-    }
-
-    window[callbackName] = (payload) => {
-      cleanup();
-      resolve(payload || {});
-    };
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("load-error"));
-    };
-
-    script.src = url.toString();
-    document.head.appendChild(script);
-  });
+  return requestJsonp(url, callbackName, Math.max(1000, Number(timeoutMs) || 10000));
 }
 
-async function fetchRemoteEmitCertificate(record) {
+async function fetchRemoteSendCertificate(record) {
+  return fetchRemoteCertificateAction("send_certificate", record);
+}
+
+async function fetchRemoteDownloadCertificate(record) {
+  return fetchRemoteCertificateAction("download_certificate", record);
+}
+
+function fetchRemoteCertificateAction(action, record) {
   const callbackName = `tapCertEmit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const url = new URL(SHEETS_APPEND_URL);
-  url.searchParams.set("action", "emit_certificate");
+  url.searchParams.set("action", action);
   url.searchParams.set("record", encodeRecordForQuery(record));
   if (APP_SECRET) {
     url.searchParams.set("appSecret", APP_SECRET);
   }
   url.searchParams.set("callback", callbackName);
 
+  return requestJsonp(url, callbackName, action === "send_certificate" ? 60000 : 120000);
+}
+
+function requestJsonp(url, callbackName, timeoutMs) {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    const timeoutId = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("timeout"));
-    }, 15000);
-
-    function cleanup() {
+    let settled = false;
+    let callbackInvoked = false;
+    const callback = (payload) => {
+      callbackInvoked = true;
+      if (settled) return;
+      settled = true;
       window.clearTimeout(timeoutId);
       if (script.parentNode) script.parentNode.removeChild(script);
       try {
@@ -1539,18 +1684,36 @@ async function fetchRemoteEmitCertificate(record) {
       } catch {
         window[callbackName] = undefined;
       }
-    }
-
-    window[callbackName] = (payload) => {
-      cleanup();
       resolve(payload || {});
     };
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("load-error"));
+    const retireCallback = () => {
+      window.setTimeout(() => {
+        try {
+          delete window[callbackName];
+        } catch {
+          window[callbackName] = undefined;
+        }
+      }, 300000);
     };
+    const fail = (message) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      if (script.parentNode) script.parentNode.removeChild(script);
+      window[callbackName] = () => {};
+      retireCallback();
+      reject(new Error(message));
+    };
+    const timeoutId = window.setTimeout(
+      () => fail("La solicitud a Apps Script excedió el tiempo de espera."),
+      timeoutMs
+    );
 
+    window[callbackName] = callback;
+    script.onload = () => {
+      if (!callbackInvoked) fail("Apps Script respondió sin una respuesta JSONP válida.");
+    };
+    script.onerror = () => fail("No se pudo cargar la respuesta de Apps Script.");
     script.src = url.toString();
     document.head.appendChild(script);
   });

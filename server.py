@@ -25,12 +25,9 @@ from services.email_service import get_smtp_config, send_certificado_via_email
 from services.pdf_generator import generar_certificado_pdf
 
 WEB_SHEETS_FIELDS = CSV_FIELDS.copy()
-if "genero" not in WEB_SHEETS_FIELDS:
-    try:
-        insert_at = WEB_SHEETS_FIELDS.index("apellido") + 1
-    except ValueError:
-        insert_at = 0
-    WEB_SHEETS_FIELDS.insert(insert_at, "genero")
+for field in ("genero", "pais", "provincia", "indigena", "discapacidad", "discapacidad_cual"):
+    if field not in WEB_SHEETS_FIELDS:
+        WEB_SHEETS_FIELDS.append(field)
 from services.google_sheets import get_sheets_service
 
 BASE_DIR = Path(__file__).resolve().parent

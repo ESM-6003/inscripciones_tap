@@ -202,6 +202,10 @@ label {
   font-size: 0.95rem;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 input,
 select,
 textarea {
@@ -212,6 +216,27 @@ textarea {
   color: var(--text);
   padding: 9px 10px;
   font: inherit;
+}
+
+input:disabled {
+  background: #efede7;
+  color: #85838a;
+  cursor: not-allowed;
+}
+
+.currency-input {
+  display: flex;
+  align-items: center;
+  border: 1px solid #d5d0c7;
+  border-radius: 8px;
+  background: #ffffff;
+  padding-left: 10px;
+  color: var(--text);
+}
+
+.currency-input input {
+  min-width: 0;
+  border: 0;
 }
 
 textarea {

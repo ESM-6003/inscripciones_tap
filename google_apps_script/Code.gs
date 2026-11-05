@@ -33,12 +33,12 @@ const CERTIFICATE_SETTINGS = {
   logoFileId: '',
   logoFileName: 'logo_institucional.jpg',
   logoUrl: '',
-  headerLogoMaxWidth: 165,
-  headerLogoMaxHeight: 130,
+  headerLogoMaxWidth: 150,
+  headerLogoMaxHeight: 60,
   headerGap: 4,
-  headerTitle1Size: 14,
-  headerTitle2Size: 13,
-  headerLegajoSize: 12,
+  headerTitle1Size: 12,
+  headerTitle2Size: 11,
+  headerLegajoSize: 10,
   signatureFileId: '',
   signatureFileName: 'firma.png',
   signatureUrl: '',
@@ -444,19 +444,42 @@ function buildCertificatePdfBlob_(record) {
     doc = DocumentApp.create(`cert_tmp_${Date.now()}_${Math.floor(Math.random() * 100000)}`);
     const body = doc.getBody();
     body.clear();
+    body.setPageWidth(595.28);
+    body.setPageHeight(841.89);
+    body.setMarginTop(28);
+    body.setMarginBottom(28);
+    body.setMarginLeft(40);
+    body.setMarginRight(40);
 
     appendCertificateHeader_(body, record, legajo);
-    body.appendHorizontalRule();
+    try {
+      const first = body.getChild(0);
+      if (first.getType() === DocumentApp.ElementType.PARAGRAPH && !first.asParagraph().getText()) first.removeFromParent();
+    } catch (_err) {
+      // no-op
+    }
+    const rule = body.appendHorizontalRule();
+    try {
+      const rp = rule.getParent().asParagraph();
+      rp.setSpacingBefore(0);
+      rp.setSpacingAfter(0);
+      rp.setLineSpacing(0.5);
+      rp.setAttributes({ [DocumentApp.Attribute.FONT_SIZE]: 2 });
+    } catch (_err) {
+      // no-op
+    }
 
     const certTitle = body.appendParagraph('CERTIFICADO DE INSCRIPCION');
     certTitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    certTitle.setSpacingBefore(0);
+    certTitle.setSpacingAfter(2);
     certTitle.setAttributes(
       Object.assign({}, baseTextAttrs_(), {
         [DocumentApp.Attribute.BOLD]: true,
-        [DocumentApp.Attribute.FONT_SIZE]: 16,
+        [DocumentApp.Attribute.FONT_SIZE]: 14,
       })
     );
-    body.appendParagraph('');
+    appendSpacer_(body);
 
     appendSectionTitle_(body, 'Datos del Estudiante:');
     appendFieldLine_(body, 'Nombre y Apellido', getNombreCompleto_(record));
@@ -472,13 +495,13 @@ function buildCertificatePdfBlob_(record) {
     appendFieldLine_(body, 'Indígena', record.indigena || '');
     appendFieldLine_(body, 'Discapacidad', record.discapacidad || '');
     appendFieldLine_(body, '¿Cuál?', record.discapacidad_cual || '');
-    body.appendParagraph('');
+    appendSpacer_(body);
 
     appendSectionTitle_(body, 'Datos de Padres/Tutores:');
     appendFieldLine_(body, 'Nombre del Padre', record.nombre_padre || '');
     appendFieldLine_(body, 'Nombre de la Madre', record.nombre_madre || '');
     appendFieldLine_(body, 'Telefono de Emergencia', record.telefono_emergencia || '');
-    body.appendParagraph('');
+    appendSpacer_(body);
 
     appendSectionTitle_(body, 'Datos de Inscripcion:');
     const materias = Array.isArray(record.materias) && record.materias.length
@@ -494,32 +517,23 @@ function buildCertificatePdfBlob_(record) {
         en_lista_espera: record.en_lista_espera || '',
       }];
     appendMateriasTable_(body, materias);
-    body.appendParagraph('');
+    appendSpacer_(body);
 
     appendSectionTitle_(body, 'Informacion Adicional:');
-    appendFieldLine_(body, 'SAETA', record.saeta || '');
-    appendFieldLine_(body, 'Obra Social', record.obra_social || '');
-    appendFieldLine_(body, 'Seguro Escolar', record.seguro_escolar || '');
-    appendFieldLine_(body, 'Pago Voluntario', record.pago_voluntario || '');
-    if (String(record.monto || '').trim()) {
-      appendFieldLine_(body, '  Monto', formatMonto_(record.monto));
-    }
-    appendFieldLine_(body, 'Permiso', record.permiso || '');
+    appendInlineFields_(body, [
+      ['SAETA', record.saeta],
+      ['Obra Social', record.obra_social],
+      ['Seguro Escolar', record.seguro_escolar],
+      ['Pago Voluntario', record.pago_voluntario],
+      ['Monto', String(record.monto || '').trim() ? formatMonto_(record.monto) : ''],
+      ['Permiso', record.permiso],
+      ['Fecha de emision', Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires', 'dd/MM/yyyy HH:mm')],
+      ['Fecha de inscripcion', formatFechaInscripcion_(record.fecha_inscripcion)],
+    ]);
 
-    body.appendParagraph('');
-    appendFieldLine_(
-      body,
-      'Fecha de emision',
-      Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires', 'dd/MM/yyyy HH:mm')
-    );
-    const fechaInsc = formatFechaInscripcion_(record.fecha_inscripcion);
-    if (fechaInsc) {
-      appendFieldLine_(body, 'Fecha de inscripcion', fechaInsc);
-    }
-
-    body.appendParagraph('');
+    appendSpacer_(body, 10);
     appendSignatureBlock_(body);
-    body.appendParagraph('');
+    appendSpacer_(body);
     appendLegalFooter_(body, CERTIFICATE_SETTINGS.legalFooter);
 
     doc.saveAndClose();
@@ -560,8 +574,10 @@ function appendCertificateHeader_(body, record, legajo) {
 
   const logoBlob = getCertificateLogoBlob_();
   if (logoBlob) {
-    const logoP = logoCell.appendParagraph('');
-    logoP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    const logoP = logoCell.getChild(0).asParagraph();
+    logoP.setSpacingBefore(0);
+    logoP.setSpacingAfter(0);
+    logoP.setAlignment(DocumentApp.HorizontalAlignment.LEFT);
     const img = logoP.appendInlineImage(logoBlob);
     const originalW = Number(img.getWidth()) || 1;
     const originalH = Number(img.getHeight()) || 1;
@@ -572,9 +588,15 @@ function appendCertificateHeader_(body, record, legajo) {
     img.setHeight(Math.max(1, Math.round(originalH * scale)));
   }
 
-  const line1 = textCell.appendParagraph(CERTIFICATE_SETTINGS.titleLine1);
+  textCell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+  logoCell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+  logoCell.setWidth(Math.max(1, Number(CERTIFICATE_SETTINGS.headerLogoMaxWidth || 150)) + 8);
+
+  // Se reutiliza el párrafo inicial de la celda para no sumar una línea vacía
+  const line1 = textCell.getChild(0).asParagraph();
+  line1.setText(CERTIFICATE_SETTINGS.titleLine1);
   line1.setSpacingBefore(0);
-  line1.setSpacingAfter(2);
+  line1.setSpacingAfter(1);
   line1.setAttributes(
     Object.assign({}, baseTextAttrs_(), {
       [DocumentApp.Attribute.BOLD]: true,
@@ -584,24 +606,13 @@ function appendCertificateHeader_(body, record, legajo) {
 
   const line2 = textCell.appendParagraph(CERTIFICATE_SETTINGS.titleLine2);
   line2.setSpacingBefore(0);
-  line2.setSpacingAfter(2);
+  line2.setSpacingAfter(1);
   line2.setAttributes(
     Object.assign({}, baseTextAttrs_(), {
       [DocumentApp.Attribute.BOLD]: true,
       [DocumentApp.Attribute.FONT_SIZE]: Math.max(8, Number(CERTIFICATE_SETTINGS.headerTitle2Size || 13)),
     })
   );
-
-  if (legajo) {
-    const line3 = textCell.appendParagraph(`Legajo: ${legajo}`);
-    line3.setSpacingBefore(0);
-    line3.setSpacingAfter(0);
-    line3.setAttributes(
-      Object.assign({}, baseTextAttrs_(), {
-        [DocumentApp.Attribute.FONT_SIZE]: Math.max(8, Number(CERTIFICATE_SETTINGS.headerLegajoSize || 12)),
-      })
-    );
-  }
 }
 
 function getCertificateLogoBlob_() {
@@ -688,12 +699,38 @@ function getBlobFromDriveFolderByName_(folderId, fileName) {
 
 function appendSectionTitle_(body, text) {
   const p = body.appendParagraph(String(text || '').trim());
+  p.setSpacingBefore(0);
+  p.setSpacingAfter(2);
   p.setAttributes(
     Object.assign({}, baseTextAttrs_(), {
       [DocumentApp.Attribute.BOLD]: true,
       [DocumentApp.Attribute.FONT_SIZE]: 11,
     })
   );
+}
+
+function appendSpacer_(body, size) {
+  const p = body.appendParagraph('');
+  p.setSpacingBefore(0);
+  p.setSpacingAfter(0);
+  p.setAttributes({ [DocumentApp.Attribute.FONT_SIZE]: size || 4 });
+}
+
+// Varios datos en un mismo párrafo, separados por " | "
+function appendInlineFields_(body, pairs) {
+  const items = pairs
+    .map((pair) => [pair[0], String(pair[1] == null ? '' : pair[1]).trim()])
+    .filter((pair) => pair[1]);
+  if (!items.length) return;
+  const p = body.appendParagraph('');
+  p.setAttributes(baseTextAttrs_());
+  p.setSpacingBefore(0);
+  p.setSpacingAfter(2);
+  items.forEach((pair, i) => {
+    if (i > 0) p.appendText('  |  ').setAttributes(Object.assign({}, baseTextAttrs_(), { [DocumentApp.Attribute.BOLD]: false }));
+    p.appendText(`${pair[0]}: `).setAttributes(Object.assign({}, baseTextAttrs_(), { [DocumentApp.Attribute.BOLD]: true }));
+    p.appendText(pair[1]).setAttributes(Object.assign({}, baseTextAttrs_(), { [DocumentApp.Attribute.BOLD]: false }));
+  });
 }
 
 function appendFieldLine_(body, label, value, opts) {
@@ -703,6 +740,8 @@ function appendFieldLine_(body, label, value, opts) {
   const suffix = String(options.suffix || '');
   const paragraph = body.appendParagraph('');
   paragraph.setAttributes(baseTextAttrs_());
+  paragraph.setSpacingBefore(0);
+  paragraph.setSpacingAfter(1);
   const labelText = paragraph.appendText(`${label}: `);
   labelText.setAttributes(Object.assign({}, baseTextAttrs_(), { [DocumentApp.Attribute.BOLD]: true }));
   const valueText = paragraph.appendText(`${raw}${suffix}`);
@@ -811,7 +850,7 @@ function appendSignatureBlock_(body) {
 
   const signatureBlob = getCertificateSignatureBlob_();
   if (signatureBlob) {
-    const sigP = right.appendParagraph('');
+    const sigP = right.getChild(0).asParagraph();
     sigP.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
     const img = sigP.appendInlineImage(signatureBlob);
     const originalW = Number(img.getWidth()) || 1;
@@ -822,45 +861,29 @@ function appendSignatureBlock_(body) {
     img.setWidth(Math.max(1, Math.round(originalW * scale)));
     img.setHeight(Math.max(1, Math.round(originalH * scale)));
   } else {
-    right.appendParagraph('');
+    right.getChild(0).asParagraph().setSpacingAfter(0);
   }
 
   const line = right.appendParagraph('__________________________');
   line.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  line.setAttributes(baseTextAttrs_());
+  line.setSpacingBefore(0);
+  line.setSpacingAfter(0);
+  line.setAttributes(Object.assign({}, baseTextAttrs_(), { [DocumentApp.Attribute.FONT_SIZE]: 7 }));
 
-  const label = right.appendParagraph(String(CERTIFICATE_SETTINGS.signatureLabel || 'Firma y Sello'));
-  label.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  label.setAttributes(baseTextAttrs_());
-
-  const auth = right.appendParagraph(String(CERTIFICATE_SETTINGS.signatureAuthority || 'Autoridad Escolar'));
-  auth.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  auth.setAttributes(baseTextAttrs_());
-
-  const name = right.appendParagraph(String(CERTIFICATE_SETTINGS.signatureName || ''));
-  name.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  name.setAttributes(
-    Object.assign({}, baseTextAttrs_(), {
-      [DocumentApp.Attribute.BOLD]: true,
-      [DocumentApp.Attribute.FONT_SIZE]: 8,
-    })
-  );
-
-  const role1 = right.appendParagraph(String(CERTIFICATE_SETTINGS.signatureRole1 || ''));
-  role1.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  role1.setAttributes(
-    Object.assign({}, baseTextAttrs_(), {
-      [DocumentApp.Attribute.FONT_SIZE]: 8,
-    })
-  );
-
-  const role2 = right.appendParagraph(String(CERTIFICATE_SETTINGS.signatureRole2 || ''));
-  role2.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  role2.setAttributes(
-    Object.assign({}, baseTextAttrs_(), {
-      [DocumentApp.Attribute.FONT_SIZE]: 8,
-    })
-  );
+  const sigSmall = { [DocumentApp.Attribute.FONT_SIZE]: 7 };
+  const sigLines = [
+    [String(CERTIFICATE_SETTINGS.signatureName || ''), Object.assign({}, baseTextAttrs_(), sigSmall, { [DocumentApp.Attribute.BOLD]: true })],
+    [String(CERTIFICATE_SETTINGS.signatureRole1 || ''), Object.assign({}, baseTextAttrs_(), sigSmall)],
+    [String(CERTIFICATE_SETTINGS.signatureRole2 || ''), Object.assign({}, baseTextAttrs_(), sigSmall)],
+  ];
+  sigLines.forEach((item) => {
+    if (!item[0]) return;
+    const p = right.appendParagraph(item[0]);
+    p.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    p.setSpacingBefore(0);
+    p.setSpacingAfter(0);
+    p.setAttributes(item[1]);
+  });
 }
 
 function appendLegalFooter_(body, text) {

@@ -97,14 +97,26 @@
           <h3>Datos de Inscripcion</h3>
           <div class="field-grid">
             <label>SAETA
-              <select name="saeta"><option>No</option><option>Si</option></select>
+              <select name="saeta" required>
+                <option value="">Seleccionar</option>
+                <option>No</option>
+                <option>Si</option>
+              </select>
             </label>
             <label>Obra Social<input name="obra_social"></label>
             <label>Seguro Escolar
-              <select name="seguro_escolar"><option>No</option><option>Si</option></select>
+              <select name="seguro_escolar" required>
+                <option value="">Seleccionar</option>
+                <option>No</option>
+                <option>Si</option>
+              </select>             
             </label>
             <label>Pago Voluntario
-              <select name="pago_voluntario"><option>No</option><option>Si</option></select>
+              <select name="pago_voluntario" required>
+                <option value="">Seleccionar</option>
+                <option>No</option>
+                <option>Si</option>
+              </select>
             </label>
             <label>Monto (Pesos argentinos)
               <span class="currency-input"><span aria-hidden="true">$</span><input name="monto" type="number" min="1000" step="1" inputmode="numeric"></span>

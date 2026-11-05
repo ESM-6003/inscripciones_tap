@@ -73,7 +73,7 @@ Al guardar inscripciones desde el formulario:
 - y se hace append en Google Sheets directo por Web App
 - y se genera, descarga y envía automáticamente un certificado PDF con todas las materias elegidas por estudiante
 
-El formulario incluye país y provincia, pertenencia indígena, discapacidad y su detalle. El email es obligatorio y debe tener un dominio válido; la fecha de nacimiento se selecciona con el calendario. El monto se ingresa en pesos argentinos y, si se informa, debe ser de al menos $1.000.
+El formulario incluye país y provincia: para Argentina se elige una provincia de la lista y para otros países se completa provincia/estado manualmente. También incluye pertenencia indígena, discapacidad y su detalle. El email es obligatorio y debe tener un dominio válido; la fecha de nacimiento se selecciona con el calendario. El monto se ingresa en pesos argentinos y, si se informa, debe ser de al menos $1.000.
 
 Al agregar campos al formulario, actualizar `CSV_FIELDS` en `google_apps_script/Code.gs` y volver a desplegar el Web App. El script agrega los encabezados que falten al final de la pestaña `Inscripciones`; estos campos se completan para las nuevas inscripciones, no para filas históricas.
 
